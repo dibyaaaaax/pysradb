@@ -15,11 +15,28 @@ from .utils import path_leaf
 
 
 def _order_first(df, column_order_list):
-    columns = df.columns.tolist()
     columns = column_order_list + [
-        col for col in columns if col not in column_order_list
+        col for col in df.columns.tolist() if col not in column_order_list
     ]
-    return df[columns].drop_duplicates()
+    df = df[columns]
+    if df.shape[0] > 1:
+        df = df.drop_duplicates()
+    return df
+
+
+def _retry_response(base_url, payload, key, max_retries=10):
+    """Rerty fetching esummary if API rate limit exceeeds"""
+    for index, _ in enumerate(range(max_retries)):
+        try:
+            request = requests.get(base_url, params=OrderedDict(payload))
+            response = request.json()
+            results = response[key]
+            return response
+        except KeyError:
+            # sleep for increasing times
+            time.sleep(index + 1)
+            continue
+    raise RuntimeError("Failed to fetch esummary. API rate limit exceeded.")
 
 
 def get_retmax(n_records, retmax=500):
@@ -123,7 +140,8 @@ class SRAweb(SRAdb):
                 "http://{}".format(url),
                 url.replace("ftp.sra.ebi.ac.uk/", "era-fasp@fasp.sra.ebi.ac.uk:"),
             )
-            for url in request_text.split("\n") if "fastq_ftp" not in url
+            for url in request_text.split("\n")
+            if "fastq_ftp" not in url
         ]
         # Paired end case
         if ";" in request_text:
@@ -182,12 +200,16 @@ class SRAweb(SRAdb):
         if isinstance(term, list):
             term = " OR ".join(term)
         payload += [("term", term)]
-
-        request = requests.get(self.base_url["esearch"], params=OrderedDict(payload))
+        request = requests.post(self.base_url["esearch"], data=OrderedDict(payload))
         esearch_response = request.json()
         if "esummaryresult" in esearch_response:
             print("No result found")
             return
+        if "error" in esearch_response:
+            # API rate limite exceeded
+            esearch_response = _retry_response(
+                self.base_url["esearch"], payload, "esearchresult"
+            )
 
         n_records = int(esearch_response["esearchresult"]["count"])
 
@@ -202,6 +224,9 @@ class SRAweb(SRAdb):
                 self.base_url["esummary"], params=OrderedDict(payload)
             )
             response = request.json()
+            if "error" in response:
+                # API rate limite exceeded
+                response = _retry_response(self.base_url["esummary"], payload, "result")
             if retstart == 0:
                 results = response["result"]
             else:
@@ -228,6 +253,11 @@ class SRAweb(SRAdb):
         if "esummaryresult" in esearch_response:
             print("No result found")
             return
+        if "error" in esearch_response:
+            # API rate limite exceeded
+            esearch_response = _retry_response(
+                self.base_url["esearch"], payload, "esearchresult"
+            )
 
         n_records = int(esearch_response["esearchresult"]["count"])
 
@@ -532,7 +562,7 @@ class SRAweb(SRAdb):
             elif row.entrytype == "GSM":
                 gse_df.loc[index, "study_alias"] = study_alias
         gse_df = gse_df[gse_df.entrytype == "GSM"]
-        if kwargs["detailed"] == True:
+        if kwargs and kwargs["detailed"] == True:
             return gse_df
         return gse_df[
             ["study_alias", "experiment_alias", "experiment_accession"]
@@ -625,13 +655,16 @@ class SRAweb(SRAdb):
             columns={"SRA": "project_accession", "accession": "project_alias"}
         )
         gsm_df = self.gse_to_gsm(gse_df.project_alias.tolist(), detailed=True)
-        joined_df = gsm_df.merge(srr_df, on="experiment_accession")
+        srr_cols = list(
+            set(srr_df.columns.tolist()).difference(gsm_df.columns.tolist())
+        ) + ["experiment_accession"]
+        joined_df = gsm_df.merge(srr_df[srr_cols], on="experiment_accession")
         return _order_first(joined_df, ["run_accession", "experiment_alias"])
 
     def srr_to_srp(self, srr, **kwargs):
         """Get SRP for a SRR"""
         srr_df = self.sra_metadata(srr, **kwargs)
-        if kwargs["detailed"] == True:
+        if kwargs and kwargs["detailed"] == True:
             return srr_df
         return _order_first(srr_df, ["run_accession", "study_accession"])
 

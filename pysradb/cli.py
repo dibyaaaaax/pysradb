@@ -35,7 +35,7 @@ def _print_save_df(df, saveto=None):
         df.to_csv(saveto, index=False, header=True, sep="\t")
     else:
         if len(df.index):
-            pd.set_option("display.max_colwidth", -1)
+            pd.set_option("display.max_colwidth", None)
             # Bug in pandas 0.25.3: https://github.com/pandas-dev/pandas/issues/24980
             # causes extra leading spaces
             to_print = df.to_string(index=False, justify="left", col_space=0).lstrip()
@@ -70,7 +70,7 @@ def _check_sradb_file(db):
 
 
 def get_sra_object(db="web"):
-    if db is "web":
+    if db == "web":
         return SRAweb()
     return SRAdb(db)
 
@@ -586,7 +586,7 @@ def parse_args(args=None):
     subparser.add_argument(
         "--expand", action="store_true", help="Should sample_attribute be expanded"
     )
-    subparser.add_argument("srp_id")
+    subparser.add_argument("srp_id", nargs="+")
     subparser.set_defaults(func=metadata)
 
     subparser = subparsers.add_parser("download", help="Download SRA project (SRPnnnn)")

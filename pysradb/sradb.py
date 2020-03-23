@@ -151,7 +151,7 @@ def _verify_srametadb(filepath):
         db = BASEdb(filepath)
     except:
         print(
-            "{} not a valid SRAmetadb.sqlite file.\n".format(filepath)
+            "{} not a valid SRAmetadb.sqlite file or path.\n".format(filepath)
             + "Please download one using `pysradb metadb`."
         )
         sys.exit(1)
@@ -177,8 +177,8 @@ class SRAdb(BASEdb):
 
 
         """
-        super(SRAdb, self).__init__(sqlite_file)
         _verify_srametadb(sqlite_file)
+        super(SRAdb, self).__init__(sqlite_file)
         self._db_type = "SRA"
         self.valid_in_acc_type = [
             "SRA",
@@ -235,7 +235,7 @@ class SRAdb(BASEdb):
 
         Parameters
         ----------
-        acc: string
+        acc: string or list
              SRA accession ID
         out_type: list
                   List of columns to output
@@ -258,13 +258,16 @@ class SRAdb(BASEdb):
         metadata_df: DataFrame
                      A dataframe with all relevant columns
         """
-        in_acc_type = re.sub("\\d+$", "", acc).upper()
-        if in_acc_type not in self.valid_in_acc_type and not acc_is_searchstr:
-            raise ValueError("{} not a valid input type".format(in_acc_type))
-        if acc_is_searchstr:
-            in_type = "study"
-        else:
-            in_type = self.valid_in_type[in_acc_type]
+        if not isinstance(acc, list):
+            acc = [acc]
+        for single_acc in acc:
+            in_acc_type = re.sub("\\d+$", "", single_acc).upper()
+            if in_acc_type not in self.valid_in_acc_type and not acc_is_searchstr:
+                raise ValueError("{} not a valid input type".format(in_acc_type))
+            if acc_is_searchstr:
+                in_type = "study"
+            else:
+                in_type = self.valid_in_type[in_acc_type]
         output_columns = out_type[:]
         if detailed:
             output_columns += [
@@ -296,7 +299,7 @@ class SRAdb(BASEdb):
             "SELECT DISTINCT "
             + select_type_sql
             + " FROM sra_ft WHERE sra_ft MATCH '"
-            + acc
+            + " OR ".join(acc)
             + "';"
         )
         df = self.query(sql)

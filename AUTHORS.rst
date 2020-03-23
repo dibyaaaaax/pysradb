@@ -10,4 +10,5 @@ Development Lead
 Contributors
 ------------
 
-None yet. Why not be the first?
+* `Dibya Gautam <https://github.com/dibyaaaaax>`_
+* `Marius van den Beek <https://github.com/mvdbeek>`_
